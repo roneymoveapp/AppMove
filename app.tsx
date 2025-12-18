@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
 import { Screen } from './types';
 import { supabase } from './supabaseClient';
@@ -173,8 +174,6 @@ const calculatePrice = async (distanceInKm: number, durationInMinutes: number): 
             .single();
 
         if (error || !data) {
-            // console.error('Error fetching tariff:', error?.message || 'No tariff found for the current time.');
-            // Fallback to basic pricing if no tariff found to prevent app crash
              const fallbackPrice = (distanceInKm * 2) + (durationInMinutes * 0.5);
              return Math.max(fallbackPrice, 6.00);
         }
@@ -185,13 +184,12 @@ const calculatePrice = async (distanceInKm: number, durationInMinutes: number): 
         return Math.max(basePrice, tariff.min_fare);
     } catch (e: any) {
         console.error("Critical error in calculatePrice:", e);
-        // Fallback calculation in case of DB error
         return Math.max((distanceInKm * 2) + (durationInMinutes * 0.5), 6.00);
     }
 };
 
 
-// --- ICONS (unchanged) ---
+// --- ICONS ---
 const Logo: React.FC<{ className?: string }> = ({ className }) => (
     <h1 className={`text-5xl font-bold tracking-tighter text-white ${className}`}>Move</h1>
 );
@@ -809,7 +807,6 @@ const ProfileScreen: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
 
-    // Sync local state if profile from context changes
     useEffect(() => {
         if (profile) {
             setFullName(profile.full_name || '');
@@ -821,7 +818,6 @@ const ProfileScreen: React.FC = () => {
         setIsEditing(!isEditing);
         setError(null);
         setSuccess(null);
-        // If canceling, reset fields to original profile data
         if (isEditing && profile) {
             setFullName(profile.full_name || '');
             setPhone(profile.phone || '');
@@ -844,14 +840,13 @@ const ProfileScreen: React.FC = () => {
 
             if (error) throw error;
             
-            // Update global profile state
             if (data) {
                 setProfile(data as Profile);
             }
             
             setSuccess('Perfil atualizado com sucesso!');
             setIsEditing(false);
-            setTimeout(() => setSuccess(null), 3000); // Clear message after 3 seconds
+            setTimeout(() => setSuccess(null), 3000);
 
         } catch (error: any) {
             setError(error.message || 'Falha ao atualizar o perfil.');
@@ -1042,8 +1037,8 @@ const AddCardScreen: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
 
     const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const value = e.target.value.replace(/\D/g, ''); // Remove non-digits
-        const formattedValue = value.replace(/(\d{4})/g, '$1 ').trim(); // Add space every 4 digits
+        const value = e.target.value.replace(/\D/g, '');
+        const formattedValue = value.replace(/(\d{4})/g, '$1 ').trim();
         if (formattedValue.length <= 19) {
             setCardNumber(formattedValue);
         }
@@ -1090,7 +1085,6 @@ const AddCardScreen: React.FC = () => {
         setLoading(true);
         
         try {
-            // Desmarcar qualquer outro método como selecionado
             const { error: updateError } = await supabase
                 .from('payment_methods')
                 .update({ is_selected: false })
@@ -1098,7 +1092,6 @@ const AddCardScreen: React.FC = () => {
 
             if (updateError) throw updateError;
             
-            // Inserir o novo cartão como selecionado
             const { error: insertError } = await supabase.from('payment_methods').insert({
                 user_id: user.id,
                 type: 'Cartão',
@@ -1108,7 +1101,6 @@ const AddCardScreen: React.FC = () => {
 
             if (insertError) throw insertError;
 
-            // Atualizar o estado global e navegar de volta
             await refreshPaymentMethods();
             navigate(Screen.Payments);
 
@@ -1163,26 +1155,24 @@ const PaymentsScreen: React.FC = () => {
         setLoadingSelection(selectionKey);
 
         try {
-            // 1. Desmarcar todos os métodos existentes
             await supabase.from('payment_methods').update({ is_selected: false }).eq('user_id', user.id);
 
-            // 2. Selecionar o método clicado
-            if ('id' in methodOrType) { // É um cartão salvo
+            if ('id' in methodOrType) {
                 await supabase.from('payment_methods').update({ is_selected: true }).eq('id', methodOrType.id);
-            } else { // É Pix ou Dinheiro
+            } else {
                 const { data } = await supabase
                     .from('payment_methods')
                     .select('id')
                     .match({ user_id: user.id, type: methodOrType.type })
                     .single();
 
-                if (data) { // Já existe, apenas atualiza
+                if (data) {
                     await supabase.from('payment_methods').update({ is_selected: true }).eq('id', data.id);
-                } else { // Não existe, insere um novo
+                } else {
                     await supabase.from('payment_methods').insert({
                         user_id: user.id,
                         type: methodOrType.type,
-                        details: methodOrType.type, // 'Pix' ou 'Dinheiro'
+                        details: methodOrType.type,
                         is_selected: true
                     });
                 }
@@ -1247,7 +1237,6 @@ const PaymentsScreen: React.FC = () => {
                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Escolha uma opção</h3>
                     <div className="bg-white rounded-lg shadow">
                         <ul className="divide-y divide-gray-200">
-                            {/* Lista de cartões salvos */}
                             {savedCards.map(card => renderPaymentListItem(
                                 card.details || 'Cartão',
                                 <CreditCardIcon className="text-gray-600" />,
@@ -1256,7 +1245,6 @@ const PaymentsScreen: React.FC = () => {
                                 card.is_selected,
                                 loadingSelection === `card-${card.id}`
                             ))}
-                            {/* Opção para adicionar novo cartão */}
                             {renderPaymentListItem(
                                 'Cartão de crédito ou débito',
                                 <CreditCardIcon className="text-gray-600" />,
@@ -1265,7 +1253,6 @@ const PaymentsScreen: React.FC = () => {
                                 false,
                                 false
                             )}
-                            {/* Opção Pix */}
                             {renderPaymentListItem(
                                 'Pix',
                                 <PixIcon className="text-green-500" />,
@@ -1274,7 +1261,6 @@ const PaymentsScreen: React.FC = () => {
                                 selectedMethod?.type === 'Pix',
                                 loadingSelection === 'Pix'
                             )}
-                             {/* Opção Dinheiro */}
                              {renderPaymentListItem(
                                 'Dinheiro',
                                 <CashIcon className="text-blue-500" />,
@@ -1332,11 +1318,11 @@ const SettingsScreen: React.FC = () => {
         setLoading(true);
 
         try {
-            if (notificationsEnabled) { // User wants to disable
+            if (notificationsEnabled) {
                 await supabase.from('profiles').update({ fcm_token: null }).eq('id', user.id);
                 setProfile({ ...profile, fcm_token: null });
                 setNotificationsEnabled(false);
-            } else { // User wants to enable
+            } else {
                 if (window.confirm('Deseja permitir que o Move envie notificações para você?')) {
                     const fakeToken = `fake-fcm-token-${Date.now()}`;
                     await supabase.from('profiles').update({ fcm_token: fakeToken }).eq('id', user.id);
@@ -1461,7 +1447,7 @@ const ScheduledRidesScreen: React.FC = () => {
             try {
                 const { error } = await supabase.from('scheduled_rides').delete().eq('id', rideId);
                 if (error) throw error;
-                fetchScheduledRides(); // Refresh the list
+                fetchScheduledRides();
             } catch (e) {
                 alert('Não foi possível cancelar a corrida.');
             }
@@ -1584,7 +1570,6 @@ const ChatScreen: React.FC = () => {
             if (error) throw error;
         } catch (e: any) {
             console.error("Failed to send message:", e.message);
-            // Optionally, handle the UI to show the message failed to send
         }
     };
 
@@ -1658,12 +1643,10 @@ const SideMenu: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, 
 
     return (
         <>
-            {/* Overlay */}
             <div 
                 className={`absolute inset-0 bg-black z-40 transition-opacity duration-300 ease-in-out ${isOpen ? 'bg-opacity-50' : 'bg-opacity-0 pointer-events-none'}`} 
                 onClick={onClose}
             ></div>
-            {/* Menu Panel */}
             <div className={`absolute top-0 left-0 h-full bg-white shadow-2xl z-50 flex flex-col transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'}`} style={{width: '80%'}}>
                 <header className="bg-slate-800 p-5 flex items-center space-x-4">
                     <div className="w-14 h-14 bg-red-500 rounded-full flex items-center justify-center text-white text-2xl font-bold">
@@ -1755,7 +1738,7 @@ const RideRequestSheet = () => {
                             const durationMin = (route.duration?.value || 0) / 60;
 
                             const simplePrice = await calculatePrice(distanceKm, durationMin);
-                            const comfortPrice = simplePrice * 1.30; // 30% markup for Comfort
+                            const comfortPrice = simplePrice * 1.30;
 
                             setPrices({
                                 Simples: simplePrice,
@@ -1806,8 +1789,8 @@ const RideRequestSheet = () => {
                 p_to_location: rideState.to,
                 p_price: priceAsNumber,
                 p_vehicle_type: selectedVehicle,
-                p_origin_lat: rideState.originLat || null, // Send coordinates to DB
-                p_origin_lng: rideState.originLng || null  // Send coordinates to DB
+                p_origin_lat: rideState.originLat || null,
+                p_origin_lng: rideState.originLng || null
             });
 
             if (error) throw error;
@@ -1842,7 +1825,7 @@ const RideRequestSheet = () => {
             const { error } = await supabase.from('scheduled_rides').insert({
                 user_id: user.id,
                 from_location: rideState.from,
-                to_location: rideState.to, // Note: stops are not saved for scheduled rides in this version
+                to_location: rideState.to,
                 vehicle_type: selectedVehicle,
                 scheduled_for: scheduleTime
             });
@@ -1870,7 +1853,6 @@ const RideRequestSheet = () => {
         } catch(e) {
             console.error('Failed to cancel ride search:', e);
             alert('Falha ao cancelar a busca.');
-            // Still reset locally
             resetRideState();
         }
     };
@@ -2067,16 +2049,12 @@ const RatingSheet: React.FC = () => {
                 .eq('id', rideState.rideId)
 
             if (error) throw error;
-            
-            // Success, reset the app state
             alert('Obrigado pela sua avaliação!');
-
         } catch (e: any) {
             console.error('Failed to submit rating', e);
             alert('Não foi possível enviar sua avaliação.');
         } finally {
             setLoading(false);
-            // Reset ride state regardless of success/failure
              setRideState(initialRideState);
         }
     };
@@ -2119,7 +2097,7 @@ const MainMapScreen: React.FC = () => {
     const [drivers, setDrivers] = useState<Driver[]>([]);
     const driverMarkers = useRef<Map<string, any>>(new Map());
 
-    const defaultCenter = { lat: -23.55052, lng: -46.633308 }; // São Paulo
+    const defaultCenter = { lat: -23.55052, lng: -46.633308 };
 
     const centerMap = (position: { lat: number; lng: number }) => {
         if (mapInstance.current) {
@@ -2147,7 +2125,6 @@ const MainMapScreen: React.FC = () => {
     useEffect(() => {
         if (mapRef.current && !mapInstance.current) {
             if (window.google && window.google.maps) {
-                // Initialize map
                 mapInstance.current = new window.google.maps.Map(mapRef.current, {
                     center: defaultCenter,
                     zoom: 12,
@@ -2175,7 +2152,6 @@ const MainMapScreen: React.FC = () => {
                     ]
                 });
 
-                // Get location only AFTER map is successfully initialized
                 if (navigator.geolocation) {
                     navigator.geolocation.getCurrentPosition(
                         (position) => {
@@ -2183,26 +2159,21 @@ const MainMapScreen: React.FC = () => {
                             centerMap(userPos);
                         },
                         () => {
-                            console.warn("Geolocation service failed or was denied. Centering on default location.");
                             centerMap(defaultCenter);
                         },
                         { enableHighAccuracy: true }
                     );
                 } else {
-                    console.warn("Browser doesn't support geolocation. Centering on default location.");
                     centerMap(defaultCenter);
                 }
             } else {
-                console.error("Google Maps script not loaded or failed. Check API key in index.html.");
                 setMapLoadError(true);
             }
         }
     }, []);
 
-    // Realtime listener for the current ride
     useEffect(() => {
         if (rideState.stage === 'none' || rideState.stage === 'confirming_details' || rideState.stage === 'rating') {
-             // If there's no active ride, don't listen to a specific ride channel
             return;
         }
 
@@ -2218,8 +2189,6 @@ const MainMapScreen: React.FC = () => {
                 },
                 (payload) => {
                     const updatedRide = payload.new as Ride;
-                    console.log('Ride updated:', updatedRide);
-                    
                     if (updatedRide.status === 'driver_en_route' && updatedRide.driver_id) {
                         setRideState(prev => ({ ...prev, stage: 'driver_en_route', driverId: updatedRide.driver_id }));
                     } else if (updatedRide.status === 'in_progress') {
@@ -2239,13 +2208,10 @@ const MainMapScreen: React.FC = () => {
         };
     }, [rideState.rideId, rideState.stage, setRideState]);
 
-    // Effect for Supabase Realtime Subscription to drivers table
     useEffect(() => {
         let channel: any;
 
-        // State 1: In a ride. Listen ONLY to the assigned driver.
         if (rideState.driverId) {
-            // Immediately filter the drivers list to only show the assigned one.
              setDrivers(currentDrivers => currentDrivers.filter(d => d.id === rideState.driverId));
 
             channel = supabase
@@ -2261,20 +2227,18 @@ const MainMapScreen: React.FC = () => {
                     (payload) => {
                         const updatedDriver = payload.new as Driver;
                         if (updatedDriver) {
-                            // Update the position of our single driver
                             setDrivers([updatedDriver]);
                         }
                     }
                 )
                 .subscribe();
 
-        // State 2: Not in a ride. Listen to ALL online drivers.
         } else {
             const fetchAndSetInitialDrivers = async () => {
                 const { data, error } = await supabase
                     .from('drivers')
                     .select('*')
-                    .eq('status', 'online'); // Removed is_active filter to match SQL Policy strictly
+                    .eq('status', 'online');
                 if (error) {
                     console.error('Error fetching initial drivers:', error);
                 } else if (data) {
@@ -2294,23 +2258,21 @@ const MainMapScreen: React.FC = () => {
 
                          setDrivers(currentDrivers => {
                              const existingDriverIndex = currentDrivers.findIndex(d => d.id === changedDriver.id);
-                             const isOnline = changedDriver.status === 'online'; // Simplified check
+                             const isOnline = changedDriver.status === 'online';
 
-                             // DELETE or driver went offline
                              if ((payload.eventType === 'DELETE' || !isOnline) && existingDriverIndex > -1) {
                                  return currentDrivers.filter(d => d.id !== changedDriver.id);
                              }
-                             // INSERT or UPDATE for an online driver
                              else if ((payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') && isOnline) {
-                                 if (existingDriverIndex > -1) { // Update existing
+                                 if (existingDriverIndex > -1) {
                                      const updatedDrivers = [...currentDrivers];
                                      updatedDrivers[existingDriverIndex] = changedDriver;
                                      return updatedDrivers;
-                                 } else { // Add new
+                                 } else {
                                      return [...currentDrivers, changedDriver];
                                  }
                              }
-                             return currentDrivers; // No change needed
+                             return currentDrivers;
                          });
                     }
                 )
@@ -2322,9 +2284,8 @@ const MainMapScreen: React.FC = () => {
                 supabase.removeChannel(channel);
             }
         };
-    }, [rideState.driverId]); // This effect ONLY re-runs when we get or lose a driverId
+    }, [rideState.driverId]);
 
-    // Effect to update driver markers on the map when `drivers` state changes
     useEffect(() => {
         if (!mapInstance.current || !window.google) return;
         
@@ -2342,22 +2303,14 @@ const MainMapScreen: React.FC = () => {
             anchor: new window.google.maps.Point(12, 12),
         };
 
-        // Add or update markers
         drivers.forEach(driver => {
             if (driver.current_latitude && driver.current_longitude) {
                 const pos = { lat: driver.current_latitude, lng: driver.current_longitude };
                 
                 if (currentMarkers.has(driver.id)) {
-                    // Animate marker movement smoothly
                     const marker = currentMarkers.get(driver.id);
-                    const oldPos = marker.getPosition();
                     const newPos = new window.google.maps.LatLng(pos.lat, pos.lng);
-                    
-                    // Simple check to avoid animation on first render
-                    if (oldPos && !oldPos.equals(newPos)) {
-                       // This is a simplified animation. A library like `marker-animate-unobtrusive` could be used for more complex animations.
-                       marker.setPosition(newPos);
-                    }
+                    marker.setPosition(newPos);
                 } else {
                     const newMarker = new window.google.maps.Marker({
                         position: pos,
@@ -2369,7 +2322,6 @@ const MainMapScreen: React.FC = () => {
             }
         });
 
-        // Remove markers that are no longer in the state
         driverIdsOnMap.forEach(driverId => {
             if (!driverIdsInState.has(driverId)) {
                 const marker = currentMarkers.get(driverId);
@@ -2529,7 +2481,6 @@ const App: React.FC = () => {
     };
     
     const refreshPaymentMethods = async () => {
-        // Use a local variable for user to ensure we have the latest value
         const currentUser = supabase.auth.getUser();
         if (!(await currentUser).data.user) return;
         const userId = (await currentUser).data.user.id;
@@ -2547,11 +2498,10 @@ const App: React.FC = () => {
             }
         } catch (error: any) {
             console.error('Error fetching payment methods:', error.message);
-            setPaymentMethods([]); // Clear on error
+            setPaymentMethods([]);
         }
     };
     
-    // Effect to fetch driver details when a driver is assigned to a ride
     useEffect(() => {
         const fetchDriverDetails = async () => {
             if (rideState.driverId && !rideState.driverDetails) {
@@ -2576,10 +2526,9 @@ const App: React.FC = () => {
 
                 } catch(e: any) {
                     console.error("Failed to fetch driver details:", e.message);
-                    setRideState(prev => ({...prev, driverDetails: null})); // Clear on error
+                    setRideState(prev => ({...prev, driverDetails: null}));
                 }
             }
-             // Clear driver details if driverId is cleared
             if (!rideState.driverId && rideState.driverDetails) {
                 setRideState(prev => ({...prev, driverDetails: null}));
             }
@@ -2590,21 +2539,29 @@ const App: React.FC = () => {
 
     useEffect(() => {
         const fetchInitialData = async (session: Session) => {
+            // CRITICAL: Check for recovery flow in URL
+            const isRecovery = window.location.hash.includes('type=recovery');
+
             if (session?.user) {
                 setUser(session.user);
                 await getProfile(session.user);
                 await refreshPaymentMethods();
-                setCurrentScreen(Screen.MainMap);
+                // ONLY switch to Map if not in a password recovery flow
+                if (!isRecovery) {
+                    setCurrentScreen(Screen.MainMap);
+                }
             } else {
                 setUser(null);
                 setProfile(null);
                 setPaymentMethods([]);
-                setCurrentScreen(Screen.Login);
+                // ONLY switch to Login if not in a recovery flow
+                if (!isRecovery) {
+                    setCurrentScreen(Screen.Login);
+                }
             }
             setLoading(false);
         };
     
-        // Immediately fetch the session and then set up the listener
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSession(session);
             fetchInitialData(session);
@@ -2617,7 +2574,6 @@ const App: React.FC = () => {
                     return; 
                 }
                 setSession(session);
-                // When auth state changes, refetch everything else
                 fetchInitialData(session);
             });
     
