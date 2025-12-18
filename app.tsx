@@ -2460,6 +2460,10 @@ const App: React.FC = () => {
     const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
     const [navigationOrigin, setNavigationOrigin] = useState<Screen | null>(null);
 
+    // This ref acts as a "recovery lock" to prevent INITIAL_SESSION or SIGNED_IN events 
+    // from redirecting to the Main Map while we're processing a password reset link.
+    const recoveryInProgress = useRef(false);
+
      const getProfile = async (user: User) => {
         try {
             const { data, error, status } = await supabase
@@ -2538,99 +2542,14 @@ const App: React.FC = () => {
 
 
     useEffect(() => {
-        const fetchInitialData = async (session: Session) => {
-            // CRITICAL: Check for recovery flow in URL
-            const isRecovery = window.location.hash.includes('type=recovery');
-
-            if (session?.user) {
-                setUser(session.user);
-                await getProfile(session.user);
-                await refreshPaymentMethods();
-                // ONLY switch to Map if not in a password recovery flow
-                if (!isRecovery) {
-                    setCurrentScreen(Screen.MainMap);
-                }
-            } else {
-                setUser(null);
-                setProfile(null);
-                setPaymentMethods([]);
-                // ONLY switch to Login if not in a recovery flow
-                if (!isRecovery) {
-                    setCurrentScreen(Screen.Login);
-                }
-            }
-            setLoading(false);
-        };
-    
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setSession(session);
-            fetchInitialData(session);
-    
-            const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-                if (_event === 'PASSWORD_RECOVERY') {
-                    setSession(session);
-                    setCurrentScreen(Screen.ResetPassword);
-                    setLoading(false);
-                    return; 
-                }
-                setSession(session);
-                fetchInitialData(session);
-            });
-    
-            return () => {
-                subscription.unsubscribe();
-            };
-        });
-    }, []);
-
-    const signOut = () => {
-      supabase.auth.signOut();
-    };
-    
-    const navigate = (screen: Screen) => setCurrentScreen(screen);
-
-    const appContextValue: AppContextType = {
-        session, user, profile, setProfile, signOut, navigate,
-        rideState, setRideState, paymentMethods, setPaymentMethods, refreshPaymentMethods, navigationOrigin
-    };
-
-    const renderScreen = () => {
-        if (loading) return <SplashScreen />;
+        // Detect recovery flag in URL hash or search as early as possible
+        // before the Supabase SDK potentially clears it.
+        const isRecoveryUrl = window.location.hash.includes('type=recovery') || 
+                              window.location.search.includes('type=recovery');
         
-        switch (currentScreen) {
-            case Screen.SplashScreen: return <SplashScreen />;
-            case Screen.Login: return <LoginScreen />;
-            case Screen.SignUp: return <SignUpScreen />;
-            case Screen.SignUpSuccess: return <SignUpSuccessScreen />;
-            case Screen.ForgotPassword: return <ForgotPasswordScreen />;
-            case Screen.ResetPassword: return <ResetPasswordScreen />;
-            case Screen.MainMap: return <MainMapScreen />;
-            case Screen.SearchDestination: return <SearchDestinationScreen />;
-            case Screen.Profile: return <ProfileScreen />;
-            case Screen.History: return <HistoryScreen />;
-            case Screen.Payments: return <PaymentsScreen />;
-            case Screen.Support: return <SupportScreen />;
-            case Screen.Settings: return <SettingsScreen />;
-            case Screen.ChangePassword: return <ChangePasswordScreen />;
-            case Screen.HelpCenter: return <HelpCenterScreen />;
-            case Screen.ContactSupport: return <ContactSupportScreen />;
-            case Screen.ReportProblem: return <ReportProblemScreen />;
-            case Screen.TermsAndPolicy: return <TermsAndPolicyScreen />;
-            case Screen.PrivacyPolicy: return <PrivacyPolicyScreen />;
-            case Screen.AddCard: return <AddCardScreen />;
-            case Screen.ScheduledRides: return <ScheduledRidesScreen />;
-            case Screen.Chat: return <ChatScreen />;
-            default: return <LoginScreen />;
+        if (isRecoveryUrl) {
+            recoveryInProgress.current = true;
         }
-    };
 
-    return (
-        <AppContext.Provider value={appContextValue}>
-             <div className="w-full h-full font-sans">
-                {renderScreen()}
-            </div>
-        </AppContext.Provider>
-    );
-};
-
-export default App;
+        const fetchInitialData = async (session: Session, forceSkipNavigation: boolean) => {
+            if
