@@ -234,7 +234,7 @@ const MainMapScreen: React.FC = () => {
     useEffect(() => {
         if (mapRef.current && window.google) {
             mapInstance.current = new window.google.maps.Map(mapRef.current, {
-                center: { lat: -23.5505, lng: -46.6333 }, // Default to SP until localized
+                center: { lat: -23.5505, lng: -46.6333 }, 
                 zoom: 15,
                 disableDefaultUI: true,
                 styles: [
@@ -355,49 +355,87 @@ const App: React.FC = () => {
     const recoveryInProgress = useRef(false);
 
     const refreshProfile = async (u: User) => {
-        const { data } = await supabase.from('profiles').select('*').eq('id', u.id).single();
-        if (data) setProfile(data as Profile);
+        try {
+            const { data, error } = await supabase.from('profiles').select('*').eq('id', u.id).single();
+            if (error) throw error;
+            if (data) setProfile(data as Profile);
+        } catch (e) {
+            console.warn("Could not fetch profile", e);
+        }
     };
 
     useEffect(() => {
+        // Safety timeout to hide splash screen if anything hangs (5 seconds)
+        const safetyTimeout = setTimeout(() => {
+            if (loading) {
+                console.warn("Safety timeout triggered: hiding splash screen.");
+                setLoading(false);
+                if (!session) setCurrentScreen(Screen.Login);
+            }
+        }, 6000);
+
         const isRec = window.location.hash.includes('type=recovery') || window.location.search.includes('type=recovery');
         if (isRec) {
             recoveryInProgress.current = true;
-            setLoading(true);
+            // Ensure we show something after a delay if recovery event never comes
+            setTimeout(() => {
+                if (recoveryInProgress.current && loading) {
+                    setLoading(false);
+                    setCurrentScreen(Screen.Login);
+                }
+            }, 8000);
         }
 
         const handleInit = async (s: Session) => {
-            if (s?.user) {
-                setUser(s.user);
-                await refreshProfile(s.user);
-                if (!recoveryInProgress.current) {
-                    setCurrentScreen(Screen.MainMap);
-                    setLoading(false);
+            try {
+                if (s?.user) {
+                    setUser(s.user);
+                    // refreshProfile is now non-blocking (doesn't have await or catches internally)
+                    refreshProfile(s.user);
+                    
+                    if (!recoveryInProgress.current) {
+                        setCurrentScreen(Screen.MainMap);
+                        setLoading(false);
+                        clearTimeout(safetyTimeout);
+                    }
+                } else {
+                    if (!recoveryInProgress.current) {
+                        setCurrentScreen(Screen.Login);
+                        setLoading(false);
+                        clearTimeout(safetyTimeout);
+                    }
                 }
-            } else {
-                if (!recoveryInProgress.current) {
-                    setCurrentScreen(Screen.Login);
-                    setLoading(false);
-                }
+            } catch (e) {
+                console.error("Initialization failed", e);
+                setLoading(false);
+                setCurrentScreen(Screen.Login);
+                clearTimeout(safetyTimeout);
             }
         };
 
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setSession(session);
-            handleInit(session);
+        // Check for session immediately
+        supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+            setSession(currentSession);
+            handleInit(currentSession);
+        }).catch(err => {
+            console.error("Session check error", err);
+            setLoading(false);
+            setCurrentScreen(Screen.Login);
         });
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
+            console.log("Auth event received:", event);
             if (event === 'PASSWORD_RECOVERY') {
                 recoveryInProgress.current = true;
-                setSession(session);
-                setUser(session?.user);
+                setSession(s);
+                setUser(s?.user);
                 setCurrentScreen(Screen.ResetPassword);
                 setLoading(false);
+                clearTimeout(safetyTimeout);
             } else if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
                 if (!recoveryInProgress.current) {
-                    setSession(session);
-                    handleInit(session);
+                    setSession(s);
+                    handleInit(s);
                 }
             } else if (event === 'SIGNED_OUT') {
                 recoveryInProgress.current = false;
@@ -405,10 +443,14 @@ const App: React.FC = () => {
                 setUser(null);
                 setCurrentScreen(Screen.Login);
                 setLoading(false);
+                clearTimeout(safetyTimeout);
             }
         });
 
-        return () => subscription.unsubscribe();
+        return () => {
+            subscription.unsubscribe();
+            clearTimeout(safetyTimeout);
+        };
     }, []);
 
     const value: AppContextType = {
