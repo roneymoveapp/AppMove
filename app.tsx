@@ -34,6 +34,8 @@ type RideState = {
     estimatedPrice: string | null;
     rideId: number | null;
     driverId: string | null;
+    paymentMethodType: 'money' | 'pix' | 'card';
+    paymentMethodId: number | null;
 };
 
 const initialRideState: RideState = {
@@ -47,6 +49,8 @@ const initialRideState: RideState = {
     estimatedPrice: null,
     rideId: null,
     driverId: null,
+    paymentMethodType: 'money',
+    paymentMethodId: null,
 };
 
 interface AppContextType {
@@ -378,7 +382,7 @@ const ProfileScreen: React.FC = () => <ScreenWrapper title="Perfil" onBack={() =
 const HistoryScreen: React.FC = () => <ScreenWrapper title="Histórico" onBack={() => useAppContext().navigate(Screen.MainMap)}><div className="space-y-4">{[1, 2, 3].map(i => <div key={i} className="bg-white p-4 rounded-lg shadow-sm border border-gray-100"><div className="flex justify-between font-bold mb-2"><span>12 Out, 14:30</span><span>R$ 24,90</span></div><div className="text-sm text-gray-500">De: Rua A, 123</div><div className="text-sm text-gray-500">Para: Shopping Center</div></div>)}</div></ScreenWrapper>;
 
 const PaymentsScreen: React.FC = () => {
-    const { user, navigate } = useAppContext();
+    const { user, navigate, rideState, setRideState } = useAppContext();
     const [methods, setMethods] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -403,11 +407,18 @@ const PaymentsScreen: React.FC = () => {
         fetchMethods();
     }, [user]);
 
+    const selectMethod = (type: 'money' | 'pix' | 'card', id: number | null = null) => {
+        setRideState(prev => ({ ...prev, paymentMethodType: type, paymentMethodId: id }));
+    };
+
     const removeMethod = async (id: number) => {
         try {
             const { error } = await supabase.from('payment_methods').delete().eq('id', id);
             if (error) throw error;
             setMethods(prev => prev.filter(m => m.id !== id));
+            if (rideState.paymentMethodId === id) {
+                selectMethod('money');
+            }
         } catch (e) {
             alert("Erro ao remover cartão.");
         }
@@ -416,43 +427,80 @@ const PaymentsScreen: React.FC = () => {
     return (
         <ScreenWrapper title="Pagamentos" onBack={() => navigate(Screen.MainMap)}>
             <div className="space-y-4">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Opções Fixas</p>
+                
+                {/* Opção Dinheiro */}
+                <div 
+                    onClick={() => selectMethod('money')}
+                    className={`p-4 rounded-xl shadow-sm border cursor-pointer transition-all flex items-center space-x-4 ${rideState.paymentMethodType === 'money' ? 'bg-slate-100 border-slate-300 ring-2 ring-slate-400/20' : 'bg-white border-gray-100'}`}
+                >
+                    <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-green-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    </div>
+                    <div className="flex-grow">
+                        <p className="font-bold text-slate-800">Dinheiro</p>
+                        <p className="text-xs text-gray-500">Pague direto ao motorista</p>
+                    </div>
+                    {rideState.paymentMethodType === 'money' && <div className="w-5 h-5 bg-slate-800 rounded-full flex items-center justify-center"><svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div>}
+                </div>
+
+                {/* Opção Pix */}
+                <div 
+                    onClick={() => selectMethod('pix')}
+                    className={`p-4 rounded-xl shadow-sm border cursor-pointer transition-all flex items-center space-x-4 ${rideState.paymentMethodType === 'pix' ? 'bg-slate-100 border-slate-300 ring-2 ring-slate-400/20' : 'bg-white border-gray-100'}`}
+                >
+                    <div className="w-10 h-10 bg-cyan-100 rounded-full flex items-center justify-center text-cyan-600 font-bold text-xs">PIX</div>
+                    <div className="flex-grow">
+                        <p className="font-bold text-slate-800">Pix</p>
+                        <p className="text-xs text-gray-500">Pagamento instantâneo</p>
+                    </div>
+                    {rideState.paymentMethodType === 'pix' && <div className="w-5 h-5 bg-slate-800 rounded-full flex items-center justify-center"><svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div>}
+                </div>
+
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1 mt-6">Seus Cartões</p>
+
                 {loading ? (
                     <div className="flex justify-center p-10"><div className="w-6 h-6 border-2 border-slate-800 border-t-transparent rounded-full animate-spin"></div></div>
                 ) : methods.length === 0 ? (
-                    <div className="p-8 text-center bg-white rounded-xl border border-dashed border-gray-300 text-gray-400">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mx-auto mb-2 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+                    <div className="p-8 text-center bg-white rounded-xl border border-dashed border-gray-300 text-gray-400 text-sm">
                         Nenhum cartão cadastrado.
                     </div>
                 ) : (
                     methods.map(m => (
-                        <div key={m.id} className="p-4 bg-white rounded-xl shadow-sm border border-gray-100 flex justify-between items-center group animate-fade-in">
+                        <div 
+                            key={m.id} 
+                            onClick={() => selectMethod('card', m.id)}
+                            className={`p-4 rounded-xl shadow-sm border cursor-pointer transition-all flex justify-between items-center group ${rideState.paymentMethodId === m.id && rideState.paymentMethodType === 'card' ? 'bg-slate-100 border-slate-300 ring-2 ring-slate-400/20' : 'bg-white border-gray-100'}`}
+                        >
                             <div className="flex items-center space-x-3">
-                                <div className="w-10 h-6 bg-slate-100 rounded flex items-center justify-center text-[10px] font-bold text-slate-500">
-                                    {m.brand?.toUpperCase() || 'CARD'}
+                                <div className="w-10 h-6 bg-slate-200 rounded flex items-center justify-center text-[10px] font-bold text-slate-600 uppercase">
+                                    {m.brand}
                                 </div>
                                 <div>
                                     <p className="font-semibold text-slate-800">•••• {m.last4}</p>
                                     <p className="text-[10px] text-gray-400 uppercase">{m.type === 'credit_card' ? 'Crédito' : 'Débito'}</p>
                                 </div>
                             </div>
-                            <button 
-                                onClick={() => removeMethod(m.id)} 
-                                className="p-2 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
-                                title="Remover cartão"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                            </button>
+                            <div className="flex items-center space-x-2">
+                                {rideState.paymentMethodId === m.id && rideState.paymentMethodType === 'card' && <div className="w-5 h-5 bg-slate-800 rounded-full flex items-center justify-center mr-2"><svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div>}
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); removeMethod(m.id); }} 
+                                    className="p-2 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                </button>
+                            </div>
                         </div>
                     ))
                 )}
-                <Button variant="secondary" onClick={() => navigate(Screen.AddCard)}>+ Adicionar Cartão</Button>
+                <Button variant="secondary" onClick={() => navigate(Screen.AddCard)} className="mt-4">+ Adicionar Novo Cartão</Button>
             </div>
         </ScreenWrapper>
     );
 };
 
 const AddCardScreen: React.FC = () => {
-    const { user, navigate } = useAppContext();
+    const { user, navigate, setRideState } = useAppContext();
     const [loading, setLoading] = useState(false);
     const [last4, setLast4] = useState('');
     const [brand, setBrand] = useState('Visa');
@@ -462,14 +510,21 @@ const AddCardScreen: React.FC = () => {
         if (!user || last4.length !== 4) return;
         setLoading(true);
         try {
-            const { error } = await supabase.from('payment_methods').insert({
+            const { data, error } = await supabase.from('payment_methods').insert({
                 user_id: user.id,
                 last4,
                 brand,
                 type: 'credit_card',
                 is_selected: true
-            });
+            }).select().single();
+            
             if (error) throw error;
+            
+            // Seleciona automaticamente o cartão novo e limpa o destaque de dinheiro/pix
+            if (data) {
+                setRideState(prev => ({ ...prev, paymentMethodType: 'card', paymentMethodId: data.id }));
+            }
+            
             navigate(Screen.Payments);
         } catch (e) {
             alert("Erro ao salvar cartão.");
@@ -509,7 +564,7 @@ const AddCardScreen: React.FC = () => {
                     </select>
                 </div>
                 <Button type="submit" disabled={loading || last4.length !== 4}>
-                    {loading ? 'Processando...' : 'Cadastrar Cartão'}
+                    {loading ? 'Processando...' : 'Cadastrar e Selecionar'}
                 </Button>
             </form>
         </ScreenWrapper>
