@@ -36,6 +36,7 @@ type RideState = {
     driverId: string | null;
     paymentMethodType: 'money' | 'pix' | 'card';
     paymentMethodId: number | null;
+    paymentMethodLabel: string;
 };
 
 const initialRideState: RideState = {
@@ -51,6 +52,7 @@ const initialRideState: RideState = {
     driverId: null,
     paymentMethodType: 'money',
     paymentMethodId: null,
+    paymentMethodLabel: 'Dinheiro',
 };
 
 interface AppContextType {
@@ -141,35 +143,12 @@ const SignUpScreen: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
 
     const handleSignUp = async (e: React.FormEvent) => {
-        e.preventDefault(); 
-        setLoading(true); 
-        setError(null);
-
-        if (password !== confirmPassword) {
-            setError("As senhas não coincidem.");
-            setLoading(false);
-            return;
-        }
-
+        e.preventDefault(); setLoading(true); setError(null);
+        if (password !== confirmPassword) { setError("As senhas não coincidem."); setLoading(false); return; }
         try { 
-            const { error } = await supabase.auth.signUp({ 
-                email, 
-                password, 
-                options: { 
-                    data: { 
-                        full_name: fullName,
-                        phone: phone
-                    } 
-                } 
-            }); 
-            if (error) throw error; 
-            navigate(Screen.SignUpSuccess); 
-        } 
-        catch (err: any) { 
-            setError(err.message || "Erro ao cadastrar."); 
-        } finally { 
-            setLoading(false); 
-        }
+            const { error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName, phone: phone } } }); 
+            if (error) throw error; navigate(Screen.SignUpSuccess); 
+        } catch (err: any) { setError(err.message || "Erro ao cadastrar."); } finally { setLoading(false); }
     };
     return (
         <div className="w-full h-full bg-white flex flex-col justify-center p-8 animate-fade-in">
@@ -282,16 +261,13 @@ const MainMapScreen: React.FC = () => {
                     { featureType: 'transit', stylers: [{ visibility: 'off' }] }
                 ]
             });
-
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
                         const pos = { lat: position.coords.latitude, lng: position.coords.longitude };
                         updatePosition(pos);
                     },
-                    (error) => {
-                        console.error('Geolocation error:', error);
-                    }
+                    (error) => console.error('Geolocation error:', error)
                 );
             }
         }
@@ -328,10 +304,18 @@ const SearchDestinationScreen: React.FC = () => {
 };
 
 const RideRequestSheet = () => {
-    const { setRideState } = useAppContext();
+    const { rideState, setRideState } = useAppContext();
     return (
         <div className="absolute bottom-0 left-0 right-0 bg-white p-6 rounded-t-2xl shadow-2xl z-20 space-y-4 animate-slide-in-up">
-            <h2 className="text-xl font-bold">Procurando Motorista</h2>
+            <div className="flex justify-between items-start">
+                <div>
+                    <h2 className="text-xl font-bold">Procurando Motorista</h2>
+                    <p className="text-sm text-gray-500">Pagamento: <span className="font-bold text-slate-700">{rideState.paymentMethodLabel}</span></p>
+                </div>
+                <div className="text-right">
+                    <p className="text-lg font-bold text-slate-800">R$ 25,90</p>
+                </div>
+            </div>
             <div className="flex items-center space-x-3 bg-gray-50 p-4 rounded-lg">
                 <div className="w-10 h-10 bg-slate-200 rounded-full animate-pulse" />
                 <div className="flex-grow space-y-2"><div className="h-4 bg-slate-200 rounded w-1/2 animate-pulse" /><div className="h-3 bg-slate-200 rounded w-3/4 animate-pulse" /></div>
@@ -350,7 +334,6 @@ const SideMenu: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, 
         {l: 'Agendadas', s: Screen.ScheduledRides, i: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z'}, 
         {l: 'Configurações', s: Screen.Settings, i: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z'} 
     ];
-    
     return (
         <div className={`absolute inset-0 z-50 pointer-events-none transition-all duration-300 ${isOpen ? 'visible' : 'invisible'}`}>
             <div className={`absolute inset-0 bg-black bg-opacity-40 transition-opacity pointer-events-auto ${isOpen ? 'opacity-100' : 'opacity-0'}`} onClick={onClose} />
@@ -390,25 +373,16 @@ const PaymentsScreen: React.FC = () => {
         if (!user) return;
         setLoading(true);
         try {
-            const { data, error } = await supabase
-                .from('payment_methods')
-                .select('*')
-                .order('created_at', { ascending: false });
+            const { data, error } = await supabase.from('payment_methods').select('*').order('created_at', { ascending: false });
             if (error) throw error;
             if (data) setMethods(data);
-        } catch (e) {
-            console.error("Erro ao buscar cartões:", e);
-        } finally {
-            setLoading(false);
-        }
+        } catch (e) { console.error("Erro ao buscar cartões:", e); } finally { setLoading(false); }
     };
 
-    useEffect(() => {
-        fetchMethods();
-    }, [user]);
+    useEffect(() => { fetchMethods(); }, [user]);
 
-    const selectMethod = (type: 'money' | 'pix' | 'card', id: number | null = null) => {
-        setRideState(prev => ({ ...prev, paymentMethodType: type, paymentMethodId: id }));
+    const selectMethod = (type: 'money' | 'pix' | 'card', id: number | null = null, label: string = '') => {
+        setRideState(prev => ({ ...prev, paymentMethodType: type, paymentMethodId: id, paymentMethodLabel: label }));
     };
 
     const removeMethod = async (id: number) => {
@@ -416,79 +390,41 @@ const PaymentsScreen: React.FC = () => {
             const { error } = await supabase.from('payment_methods').delete().eq('id', id);
             if (error) throw error;
             setMethods(prev => prev.filter(m => m.id !== id));
-            if (rideState.paymentMethodId === id) {
-                selectMethod('money');
-            }
-        } catch (e) {
-            alert("Erro ao remover cartão.");
-        }
+            if (rideState.paymentMethodId === id) selectMethod('money', null, 'Dinheiro');
+        } catch (e) { alert("Erro ao remover cartão."); }
     };
 
     return (
         <ScreenWrapper title="Pagamentos" onBack={() => navigate(Screen.MainMap)}>
             <div className="space-y-4">
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Opções Fixas</p>
-                
                 {/* Opção Dinheiro */}
-                <div 
-                    onClick={() => selectMethod('money')}
-                    className={`p-4 rounded-xl shadow-sm border cursor-pointer transition-all flex items-center space-x-4 ${rideState.paymentMethodType === 'money' ? 'bg-slate-100 border-slate-300 ring-2 ring-slate-400/20' : 'bg-white border-gray-100'}`}
-                >
-                    <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-green-600">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    </div>
-                    <div className="flex-grow">
-                        <p className="font-bold text-slate-800">Dinheiro</p>
-                        <p className="text-xs text-gray-500">Pague direto ao motorista</p>
-                    </div>
+                <div onClick={() => selectMethod('money', null, 'Dinheiro')} className={`p-4 rounded-xl shadow-sm border cursor-pointer transition-all flex items-center space-x-4 ${rideState.paymentMethodType === 'money' ? 'bg-slate-100 border-slate-300 ring-2 ring-slate-400/20' : 'bg-white border-gray-100'}`}>
+                    <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-green-600"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
+                    <div className="flex-grow"><p className="font-bold text-slate-800">Dinheiro</p><p className="text-xs text-gray-500">Pague direto ao motorista</p></div>
                     {rideState.paymentMethodType === 'money' && <div className="w-5 h-5 bg-slate-800 rounded-full flex items-center justify-center"><svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div>}
                 </div>
-
                 {/* Opção Pix */}
-                <div 
-                    onClick={() => selectMethod('pix')}
-                    className={`p-4 rounded-xl shadow-sm border cursor-pointer transition-all flex items-center space-x-4 ${rideState.paymentMethodType === 'pix' ? 'bg-slate-100 border-slate-300 ring-2 ring-slate-400/20' : 'bg-white border-gray-100'}`}
-                >
+                <div onClick={() => selectMethod('pix', null, 'Pix')} className={`p-4 rounded-xl shadow-sm border cursor-pointer transition-all flex items-center space-x-4 ${rideState.paymentMethodType === 'pix' ? 'bg-slate-100 border-slate-300 ring-2 ring-slate-400/20' : 'bg-white border-gray-100'}`}>
                     <div className="w-10 h-10 bg-cyan-100 rounded-full flex items-center justify-center text-cyan-600 font-bold text-xs">PIX</div>
-                    <div className="flex-grow">
-                        <p className="font-bold text-slate-800">Pix</p>
-                        <p className="text-xs text-gray-500">Pagamento instantâneo</p>
-                    </div>
+                    <div className="flex-grow"><p className="font-bold text-slate-800">Pix</p><p className="text-xs text-gray-500">Pagamento instantâneo</p></div>
                     {rideState.paymentMethodType === 'pix' && <div className="w-5 h-5 bg-slate-800 rounded-full flex items-center justify-center"><svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div>}
                 </div>
-
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1 mt-6">Seus Cartões</p>
-
                 {loading ? (
                     <div className="flex justify-center p-10"><div className="w-6 h-6 border-2 border-slate-800 border-t-transparent rounded-full animate-spin"></div></div>
                 ) : methods.length === 0 ? (
-                    <div className="p-8 text-center bg-white rounded-xl border border-dashed border-gray-300 text-gray-400 text-sm">
-                        Nenhum cartão cadastrado.
-                    </div>
+                    <div className="p-8 text-center bg-white rounded-xl border border-dashed border-gray-300 text-gray-400 text-sm">Nenhum cartão cadastrado.</div>
                 ) : (
                     methods.map(m => (
-                        <div 
-                            key={m.id} 
-                            onClick={() => selectMethod('card', m.id)}
-                            className={`p-4 rounded-xl shadow-sm border cursor-pointer transition-all flex justify-between items-center group ${rideState.paymentMethodId === m.id && rideState.paymentMethodType === 'card' ? 'bg-slate-100 border-slate-300 ring-2 ring-slate-400/20' : 'bg-white border-gray-100'}`}
-                        >
+                        <div key={m.id} onClick={() => selectMethod('card', m.id, `${m.brand} •••• ${m.last4}`)} className={`p-4 rounded-xl shadow-sm border cursor-pointer transition-all flex justify-between items-center group ${rideState.paymentMethodId === m.id && rideState.paymentMethodType === 'card' ? 'bg-slate-100 border-slate-300 ring-2 ring-slate-400/20' : 'bg-white border-gray-100'}`}>
                             <div className="flex items-center space-x-3">
-                                <div className="w-10 h-6 bg-slate-200 rounded flex items-center justify-center text-[10px] font-bold text-slate-600 uppercase">
-                                    {m.brand}
-                                </div>
-                                <div>
-                                    <p className="font-semibold text-slate-800">•••• {m.last4}</p>
-                                    <p className="text-[10px] text-gray-400 uppercase">{m.type === 'credit_card' ? 'Crédito' : 'Débito'}</p>
-                                </div>
+                                <div className="w-10 h-6 bg-slate-200 rounded flex items-center justify-center text-[10px] font-bold text-slate-600 uppercase">{m.brand}</div>
+                                <div><p className="font-semibold text-slate-800">•••• {m.last4}</p><p className="text-[10px] text-gray-400 uppercase">{m.type === 'credit_card' ? 'Crédito' : 'Débito'}</p></div>
                             </div>
                             <div className="flex items-center space-x-2">
                                 {rideState.paymentMethodId === m.id && rideState.paymentMethodType === 'card' && <div className="w-5 h-5 bg-slate-800 rounded-full flex items-center justify-center mr-2"><svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div>}
-                                <button 
-                                    onClick={(e) => { e.stopPropagation(); removeMethod(m.id); }} 
-                                    className="p-2 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); removeMethod(m.id); }} className="p-2 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                             </div>
                         </div>
                     ))
@@ -506,31 +442,14 @@ const AddCardScreen: React.FC = () => {
     const [brand, setBrand] = useState('Visa');
 
     const handleAdd = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!user || last4.length !== 4) return;
+        e.preventDefault(); if (!user || last4.length !== 4) return;
         setLoading(true);
         try {
-            const { data, error } = await supabase.from('payment_methods').insert({
-                user_id: user.id,
-                last4,
-                brand,
-                type: 'credit_card',
-                is_selected: true
-            }).select().single();
-            
+            const { data, error } = await supabase.from('payment_methods').insert({ user_id: user.id, last4, brand, type: 'credit_card', is_selected: true }).select().single();
             if (error) throw error;
-            
-            // Seleciona automaticamente o cartão novo e limpa o destaque de dinheiro/pix
-            if (data) {
-                setRideState(prev => ({ ...prev, paymentMethodType: 'card', paymentMethodId: data.id }));
-            }
-            
+            if (data) setRideState(prev => ({ ...prev, paymentMethodType: 'card', paymentMethodId: data.id, paymentMethodLabel: `${data.brand} •••• ${data.last4}` }));
             navigate(Screen.Payments);
-        } catch (e) {
-            alert("Erro ao salvar cartão.");
-        } finally {
-            setLoading(false);
-        }
+        } catch (e) { alert("Erro ao salvar cartão."); } finally { setLoading(false); }
     };
 
     return (
@@ -539,33 +458,14 @@ const AddCardScreen: React.FC = () => {
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                     <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Dados do Cartão</p>
                     <Input placeholder="Número do Cartão (Simulado)" type="text" maxLength={16} required />
-                    <div className="flex space-x-4">
-                        <Input placeholder="MM/AA" className="flex-1" maxLength={5} required />
-                        <Input placeholder="CVC" className="flex-1" maxLength={3} required />
-                    </div>
-                    <hr className="my-2" />
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Exibição no App</p>
-                    <Input 
-                        placeholder="4 últimos dígitos" 
-                        value={last4} 
-                        onChange={e => setLast4(e.target.value.replace(/\D/g,''))} 
-                        maxLength={4} 
-                        required 
-                    />
-                    <select 
-                        className="w-full px-4 py-3 bg-gray-100 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-slate-500" 
-                        value={brand} 
-                        onChange={e => setBrand(e.target.value)}
-                    >
-                        <option value="Visa">Visa</option>
-                        <option value="Mastercard">Mastercard</option>
-                        <option value="Elo">Elo</option>
-                        <option value="American Express">American Express</option>
+                    <div className="flex space-x-4"><Input placeholder="MM/AA" className="flex-1" maxLength={5} required /><Input placeholder="CVC" className="flex-1" maxLength={3} required /></div>
+                    <hr className="my-2" /><p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Exibição no App</p>
+                    <Input placeholder="4 últimos dígitos" value={last4} onChange={e => setLast4(e.target.value.replace(/\D/g,''))} maxLength={4} required />
+                    <select className="w-full px-4 py-3 bg-gray-100 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-slate-500" value={brand} onChange={e => setBrand(e.target.value)}>
+                        <option value="Visa">Visa</option><option value="Mastercard">Mastercard</option><option value="Elo">Elo</option><option value="American Express">American Express</option>
                     </select>
                 </div>
-                <Button type="submit" disabled={loading || last4.length !== 4}>
-                    {loading ? 'Processando...' : 'Cadastrar e Selecionar'}
-                </Button>
+                <Button type="submit" disabled={loading || last4.length !== 4}>{loading ? 'Processando...' : 'Cadastrar e Selecionar'}</Button>
             </form>
         </ScreenWrapper>
     );
@@ -574,7 +474,6 @@ const AddCardScreen: React.FC = () => {
 const SettingsScreen: React.FC = () => <ScreenWrapper title="Configurações" onBack={() => useAppContext().navigate(Screen.MainMap)}><div className="space-y-2"><div className="p-4 bg-white rounded-lg shadow-sm border border-gray-100 flex justify-between items-center"><span>Notificações</span><div className="w-10 h-5 bg-slate-800 rounded-full" /></div></div></ScreenWrapper>;
 const ScheduledRidesScreen: React.FC = () => <ScreenWrapper title="Agendadas" onBack={() => useAppContext().navigate(Screen.MainMap)}><p className="text-center text-gray-500 mt-10">Nenhuma viagem agendada.</p></ScreenWrapper>;
 
-// --- MAIN APP COMPONENT ---
 const App: React.FC = () => {
     const [session, setSession] = useState<Session | null>(null);
     const [user, setUser] = useState<User | null>(null);
@@ -587,107 +486,30 @@ const App: React.FC = () => {
     const refreshProfile = async (u: User) => {
         try {
             const { data, error } = await supabase.from('profiles').select('*').eq('id', u.id).single();
-            if (error) throw error;
-            if (data) setProfile(data as Profile);
-        } catch (e) {
-            console.warn("Could not fetch profile", e);
-        }
+            if (error) throw error; if (data) setProfile(data as Profile);
+        } catch (e) { console.warn("Could not fetch profile", e); }
     };
 
     useEffect(() => {
-        // Safety timeout to hide splash screen if anything hangs (5 seconds)
-        const safetyTimeout = setTimeout(() => {
-            if (loading) {
-                console.warn("Safety timeout triggered: hiding splash screen.");
-                setLoading(false);
-                if (!session) setCurrentScreen(Screen.Login);
-            }
-        }, 6000);
-
+        const safetyTimeout = setTimeout(() => { if (loading) { setLoading(false); if (!session) setCurrentScreen(Screen.Login); } }, 6000);
         const isRec = window.location.hash.includes('type=recovery') || window.location.search.includes('type=recovery');
-        if (isRec) {
-            recoveryInProgress.current = true;
-            // Ensure we show something after a delay if recovery event never comes
-            setTimeout(() => {
-                if (recoveryInProgress.current && loading) {
-                    setLoading(false);
-                    setCurrentScreen(Screen.Login);
-                }
-            }, 8000);
-        }
-
+        if (isRec) { recoveryInProgress.current = true; setTimeout(() => { if (recoveryInProgress.current && loading) { setLoading(false); setCurrentScreen(Screen.Login); } }, 8000); }
         const handleInit = async (s: Session) => {
             try {
-                if (s?.user) {
-                    setUser(s.user);
-                    // refreshProfile is now non-blocking (doesn't have await or catches internally)
-                    refreshProfile(s.user);
-                    
-                    if (!recoveryInProgress.current) {
-                        setCurrentScreen(Screen.MainMap);
-                        setLoading(false);
-                        clearTimeout(safetyTimeout);
-                    }
-                } else {
-                    if (!recoveryInProgress.current) {
-                        setCurrentScreen(Screen.Login);
-                        setLoading(false);
-                        clearTimeout(safetyTimeout);
-                    }
-                }
-            } catch (e) {
-                console.error("Initialization failed", e);
-                setLoading(false);
-                setCurrentScreen(Screen.Login);
-                clearTimeout(safetyTimeout);
-            }
+                if (s?.user) { setUser(s.user); refreshProfile(s.user); if (!recoveryInProgress.current) { setCurrentScreen(Screen.MainMap); setLoading(false); clearTimeout(safetyTimeout); } } 
+                else { if (!recoveryInProgress.current) { setCurrentScreen(Screen.Login); setLoading(false); clearTimeout(safetyTimeout); } }
+            } catch (e) { setLoading(false); setCurrentScreen(Screen.Login); clearTimeout(safetyTimeout); }
         };
-
-        // Check for session immediately
-        supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
-            setSession(currentSession);
-            handleInit(currentSession);
-        }).catch(err => {
-            console.error("Session check error", err);
-            setLoading(false);
-            setCurrentScreen(Screen.Login);
-        });
-
+        supabase.auth.getSession().then(({ data: { session: currentSession } }) => { setSession(currentSession); handleInit(currentSession); });
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
-            console.log("Auth event received:", event);
-            if (event === 'PASSWORD_RECOVERY') {
-                recoveryInProgress.current = true;
-                setSession(s);
-                setUser(s?.user);
-                setCurrentScreen(Screen.ResetPassword);
-                setLoading(false);
-                clearTimeout(safetyTimeout);
-            } else if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
-                if (!recoveryInProgress.current) {
-                    setSession(s);
-                    handleInit(s);
-                }
-            } else if (event === 'SIGNED_OUT') {
-                recoveryInProgress.current = false;
-                setSession(null);
-                setUser(null);
-                setCurrentScreen(Screen.Login);
-                setLoading(false);
-                clearTimeout(safetyTimeout);
-            }
+            if (event === 'PASSWORD_RECOVERY') { recoveryInProgress.current = true; setSession(s); setUser(s?.user); setCurrentScreen(Screen.ResetPassword); setLoading(false); clearTimeout(safetyTimeout); } 
+            else if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') { if (!recoveryInProgress.current) { setSession(s); handleInit(s); } } 
+            else if (event === 'SIGNED_OUT') { recoveryInProgress.current = false; setSession(null); setUser(null); setCurrentScreen(Screen.Login); setLoading(false); clearTimeout(safetyTimeout); }
         });
-
-        return () => {
-            subscription.unsubscribe();
-            clearTimeout(safetyTimeout);
-        };
+        return () => { subscription.unsubscribe(); clearTimeout(safetyTimeout); };
     }, []);
 
-    const value: AppContextType = {
-        session, user, profile, setProfile, signOut: () => supabase.auth.signOut(), navigate: setCurrentScreen,
-        rideState, setRideState
-    };
-
+    const value: AppContextType = { session, user, profile, setProfile, signOut: () => supabase.auth.signOut(), navigate: setCurrentScreen, rideState, setRideState };
     const render = () => {
         if (loading) return <SplashScreen />;
         switch (currentScreen) {
@@ -707,7 +529,6 @@ const App: React.FC = () => {
             default: return <LoginScreen />;
         }
     };
-
     return <AppContext.Provider value={value}><div className="w-full h-full phone-screen overflow-hidden">{render()}</div></AppContext.Provider>;
 };
 
