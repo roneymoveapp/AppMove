@@ -260,7 +260,7 @@ const MainMapScreen: React.FC = () => {
             .from('drivers')
             .select('*')
             .eq('is_active', true)
-            .eq('status', 'available');
+            .eq('status', 'online');
         
         if (!error && data) {
             setAvailableDrivers(data);
