@@ -287,18 +287,64 @@ const MainMapScreen: React.FC = () => {
 };
 
 const SearchDestinationScreen: React.FC = () => {
-    const { navigate, setRideState } = useAppContext();
+    const { navigate, setRideState, user, rideState } = useAppContext();
     const [from, setFrom] = useState('Minha Localização');
     const [to, setTo] = useState('');
-    const handleConfirm = () => {
-        setRideState(prev => ({ ...prev, stage: 'confirming_details', from, to }));
+    const [loading, setLoading] = useState(false);
+
+    const handleConfirm = async () => {
+        if (!to.trim()) return;
+        if (!user) {
+            alert("Sessão expirada. Faça login novamente.");
+            return;
+        }
+
+        setLoading(true);
+
+        // 1. Atualiza visualmente primeiro para dar feedback imediato
+        setRideState(prev => ({ ...prev, stage: 'searching', from, to }));
         navigate(Screen.MainMap);
+
+        try {
+            // 2. Faz o INSERT real no Supabase
+            const { data, error } = await supabase
+                .from('rides')
+                .insert([
+                    {
+                        user_id: user.id,
+                        from_location: from,
+                        to_location: to,
+                        estimated_price: 25.90, // Valor simulado
+                        payment_method_type: rideState.paymentMethodType,
+                        status: 'searching'
+                    }
+                ])
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            // 3. Sucesso: Guarda o ID da corrida criada
+            if (data) {
+                setRideState(prev => ({ ...prev, rideId: data.id }));
+                console.log("Corrida iniciada no banco. ID:", data.id);
+            }
+
+        } catch (err: any) {
+            console.error("Erro ao solicitar corrida:", err);
+            alert("Não foi possível processar seu pedido. Verifique sua conexão.");
+            // Reverte o estado em caso de erro crítico
+            setRideState(initialRideState);
+        } finally {
+            setLoading(false);
+        }
     };
+
     return (
         <div className="w-full h-full bg-white flex flex-col">
             <header className="p-4 flex items-center border-b"><button onClick={() => navigate(Screen.MainMap)} className="p-2 mr-2"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg></button><h2 className="text-xl font-semibold">Definir Rota</h2></header>
             <main className="p-4 space-y-4"><Input placeholder="Local de partida" value={from} onChange={e => setFrom(e.target.value)} /><Input placeholder="Para onde?" value={to} onChange={e => setTo(e.target.value)} autoFocus /></main>
-            <footer className="p-4"><Button onClick={handleConfirm} disabled={!to.trim()}>Confirmar Rota</Button></footer>
+            <footer className="p-4"><Button onClick={handleConfirm} disabled={!to.trim() || loading}>{loading ? 'Solicitando...' : 'Confirmar Rota'}</Button></footer>
         </div>
     );
 };
