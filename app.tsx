@@ -376,7 +376,146 @@ const SideMenu: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, 
 
 const ProfileScreen: React.FC = () => <ScreenWrapper title="Perfil" onBack={() => useAppContext().navigate(Screen.MainMap)}><div className="flex flex-col items-center space-y-6"><div className="w-24 h-24 bg-slate-200 rounded-full flex items-center justify-center text-3xl font-bold">{getInitials(useAppContext().profile?.full_name)}</div><div className="w-full space-y-4"><Input readOnly value={useAppContext().profile?.full_name || ''} label="Nome" /><Input readOnly value={useAppContext().user?.email || ''} label="Email" /></div></div></ScreenWrapper>;
 const HistoryScreen: React.FC = () => <ScreenWrapper title="Histórico" onBack={() => useAppContext().navigate(Screen.MainMap)}><div className="space-y-4">{[1, 2, 3].map(i => <div key={i} className="bg-white p-4 rounded-lg shadow-sm border border-gray-100"><div className="flex justify-between font-bold mb-2"><span>12 Out, 14:30</span><span>R$ 24,90</span></div><div className="text-sm text-gray-500">De: Rua A, 123</div><div className="text-sm text-gray-500">Para: Shopping Center</div></div>)}</div></ScreenWrapper>;
-const PaymentsScreen: React.FC = () => <ScreenWrapper title="Pagamentos" onBack={() => useAppContext().navigate(Screen.MainMap)}><div className="space-y-4"><div className="p-4 bg-white rounded-lg shadow-sm border border-gray-100 flex justify-between items-center"><span>•••• 4242</span><span className="text-xs font-bold text-slate-400">VISA</span></div><Button variant="secondary">+ Adicionar Cartão</Button></div></ScreenWrapper>;
+
+const PaymentsScreen: React.FC = () => {
+    const { user, navigate } = useAppContext();
+    const [methods, setMethods] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetchMethods = async () => {
+        if (!user) return;
+        setLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('payment_methods')
+                .select('*')
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            if (data) setMethods(data);
+        } catch (e) {
+            console.error("Erro ao buscar cartões:", e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchMethods();
+    }, [user]);
+
+    const removeMethod = async (id: number) => {
+        try {
+            const { error } = await supabase.from('payment_methods').delete().eq('id', id);
+            if (error) throw error;
+            setMethods(prev => prev.filter(m => m.id !== id));
+        } catch (e) {
+            alert("Erro ao remover cartão.");
+        }
+    };
+
+    return (
+        <ScreenWrapper title="Pagamentos" onBack={() => navigate(Screen.MainMap)}>
+            <div className="space-y-4">
+                {loading ? (
+                    <div className="flex justify-center p-10"><div className="w-6 h-6 border-2 border-slate-800 border-t-transparent rounded-full animate-spin"></div></div>
+                ) : methods.length === 0 ? (
+                    <div className="p-8 text-center bg-white rounded-xl border border-dashed border-gray-300 text-gray-400">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mx-auto mb-2 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+                        Nenhum cartão cadastrado.
+                    </div>
+                ) : (
+                    methods.map(m => (
+                        <div key={m.id} className="p-4 bg-white rounded-xl shadow-sm border border-gray-100 flex justify-between items-center group animate-fade-in">
+                            <div className="flex items-center space-x-3">
+                                <div className="w-10 h-6 bg-slate-100 rounded flex items-center justify-center text-[10px] font-bold text-slate-500">
+                                    {m.brand?.toUpperCase() || 'CARD'}
+                                </div>
+                                <div>
+                                    <p className="font-semibold text-slate-800">•••• {m.last4}</p>
+                                    <p className="text-[10px] text-gray-400 uppercase">{m.type === 'credit_card' ? 'Crédito' : 'Débito'}</p>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={() => removeMethod(m.id)} 
+                                className="p-2 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
+                                title="Remover cartão"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            </button>
+                        </div>
+                    ))
+                )}
+                <Button variant="secondary" onClick={() => navigate(Screen.AddCard)}>+ Adicionar Cartão</Button>
+            </div>
+        </ScreenWrapper>
+    );
+};
+
+const AddCardScreen: React.FC = () => {
+    const { user, navigate } = useAppContext();
+    const [loading, setLoading] = useState(false);
+    const [last4, setLast4] = useState('');
+    const [brand, setBrand] = useState('Visa');
+
+    const handleAdd = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user || last4.length !== 4) return;
+        setLoading(true);
+        try {
+            const { error } = await supabase.from('payment_methods').insert({
+                user_id: user.id,
+                last4,
+                brand,
+                type: 'credit_card',
+                is_selected: true
+            });
+            if (error) throw error;
+            navigate(Screen.Payments);
+        } catch (e) {
+            alert("Erro ao salvar cartão.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <ScreenWrapper title="Adicionar Cartão" onBack={() => navigate(Screen.Payments)}>
+            <form onSubmit={handleAdd} className="space-y-6">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Dados do Cartão</p>
+                    <Input placeholder="Número do Cartão (Simulado)" type="text" maxLength={16} required />
+                    <div className="flex space-x-4">
+                        <Input placeholder="MM/AA" className="flex-1" maxLength={5} required />
+                        <Input placeholder="CVC" className="flex-1" maxLength={3} required />
+                    </div>
+                    <hr className="my-2" />
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Exibição no App</p>
+                    <Input 
+                        placeholder="4 últimos dígitos" 
+                        value={last4} 
+                        onChange={e => setLast4(e.target.value.replace(/\D/g,''))} 
+                        maxLength={4} 
+                        required 
+                    />
+                    <select 
+                        className="w-full px-4 py-3 bg-gray-100 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-slate-500" 
+                        value={brand} 
+                        onChange={e => setBrand(e.target.value)}
+                    >
+                        <option value="Visa">Visa</option>
+                        <option value="Mastercard">Mastercard</option>
+                        <option value="Elo">Elo</option>
+                        <option value="American Express">American Express</option>
+                    </select>
+                </div>
+                <Button type="submit" disabled={loading || last4.length !== 4}>
+                    {loading ? 'Processando...' : 'Cadastrar Cartão'}
+                </Button>
+            </form>
+        </ScreenWrapper>
+    );
+};
+
 const SettingsScreen: React.FC = () => <ScreenWrapper title="Configurações" onBack={() => useAppContext().navigate(Screen.MainMap)}><div className="space-y-2"><div className="p-4 bg-white rounded-lg shadow-sm border border-gray-100 flex justify-between items-center"><span>Notificações</span><div className="w-10 h-5 bg-slate-800 rounded-full" /></div></div></ScreenWrapper>;
 const ScheduledRidesScreen: React.FC = () => <ScreenWrapper title="Agendadas" onBack={() => useAppContext().navigate(Screen.MainMap)}><p className="text-center text-gray-500 mt-10">Nenhuma viagem agendada.</p></ScreenWrapper>;
 
@@ -507,6 +646,7 @@ const App: React.FC = () => {
             case Screen.Profile: return <ProfileScreen />;
             case Screen.History: return <HistoryScreen />;
             case Screen.Payments: return <PaymentsScreen />;
+            case Screen.AddCard: return <AddCardScreen />;
             case Screen.Settings: return <SettingsScreen />;
             case Screen.ScheduledRides: return <ScheduledRidesScreen />;
             default: return <LoginScreen />;
