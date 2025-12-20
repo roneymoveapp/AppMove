@@ -216,7 +216,7 @@ const ResetPasswordScreen: React.FC = () => {
             <div className="mb-8 text-center"><h2 className="text-3xl font-bold text-slate-800">Redefinir Senha</h2><p className="text-gray-500 mt-2">Crie uma nova senha.</p></div>
             {message && <p className="bg-green-100 text-green-700 p-3 rounded-lg mb-4 text-center">{message}</p>}
             {error && <p className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-center">{error}</p>}
-            <form onSubmit={handleReset} className="space-y-4"><Input placeholder="Nova senha" type="password" value={password} onChange={e => setPassword(e.target.value)} required /><Input placeholder="Confirmar nova senha" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required /><Button type="submit" disabled={loading || !!message}>{loading ? 'Salvando...' : 'Salvar Nova Senha'}</Button></form>
+            <form onSubmit={handleReset} className="space-y-4"><Input placeholder="Nova senha" type="password" value={password} onChange={e => setPassword(e.target.value)} required /><Input placeholder="Confirmar nova senha" type="password" value={confirmPassword} onChange={e => setPassword(e.target.value)} required /><Button type="submit" disabled={loading || !!message}>{loading ? 'Salvando...' : 'Salvar Nova Senha'}</Button></form>
         </div>
     );
 };
@@ -227,6 +227,10 @@ const MainMapScreen: React.FC = () => {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const mapInstance = useRef<any>(null);
     const userMarker = useRef<any>(null);
+    
+    // Tracking Drivers State
+    const [availableDrivers, setAvailableDrivers] = useState<any[]>([]);
+    const driverMarkers = useRef<{ [key: string]: any }>({});
 
     const updatePosition = (pos: { lat: number; lng: number }) => {
         if (mapInstance.current) {
@@ -250,6 +254,19 @@ const MainMapScreen: React.FC = () => {
         }
     };
 
+    // Fetch and Subscribe to Drivers
+    const fetchDrivers = async () => {
+        const { data, error } = await supabase
+            .from('drivers')
+            .select('*')
+            .eq('is_active', true)
+            .eq('status', 'available');
+        
+        if (!error && data) {
+            setAvailableDrivers(data);
+        }
+    };
+
     useEffect(() => {
         if (mapRef.current && window.google) {
             mapInstance.current = new window.google.maps.Map(mapRef.current, {
@@ -261,6 +278,7 @@ const MainMapScreen: React.FC = () => {
                     { featureType: 'transit', stylers: [{ visibility: 'off' }] }
                 ]
             });
+            
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
@@ -270,8 +288,56 @@ const MainMapScreen: React.FC = () => {
                     (error) => console.error('Geolocation error:', error)
                 );
             }
+
+            // Iniciar busca de motoristas
+            fetchDrivers();
+
+            // Realtime subscription for drivers table
+            const channel = supabase
+                .channel('available_drivers')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'drivers' }, () => {
+                    fetchDrivers();
+                })
+                .subscribe();
+
+            return () => {
+                supabase.removeChannel(channel);
+            };
         }
     }, []);
+
+    // Effect to update Markers on Map whenever availableDrivers change
+    useEffect(() => {
+        if (!mapInstance.current || !window.google) return;
+
+        // Add/Update markers
+        availableDrivers.forEach(driver => {
+            const pos = { lat: driver.current_latitude, lng: driver.current_longitude };
+            if (driverMarkers.current[driver.id]) {
+                driverMarkers.current[driver.id].setPosition(pos);
+            } else {
+                driverMarkers.current[driver.id] = new window.google.maps.Marker({
+                    position: pos,
+                    map: mapInstance.current,
+                    title: `${driver.vehicle_model} (${driver.vehicle_color})`,
+                    icon: {
+                        url: 'https://cdn-icons-png.flaticon.com/512/1048/1048313.png', // Car Icon
+                        scaledSize: new window.google.maps.Size(32, 32),
+                        origin: new window.google.maps.Point(0, 0),
+                        anchor: new window.google.maps.Point(16, 16)
+                    }
+                });
+            }
+        });
+
+        // Cleanup markers of drivers no longer available
+        Object.keys(driverMarkers.current).forEach(id => {
+            if (!availableDrivers.find(d => d.id === id)) {
+                driverMarkers.current[id].setMap(null);
+                delete driverMarkers.current[id];
+            }
+        });
+    }, [availableDrivers]);
 
     return (
         <div className="w-full h-full relative overflow-hidden">
