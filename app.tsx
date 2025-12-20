@@ -129,20 +129,56 @@ const LoginScreen: React.FC = () => {
 const SignUpScreen: React.FC = () => {
     const { navigate } = useAppContext();
     const [fullName, setFullName] = useState('');
+    const [phone, setPhone] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
     const handleSignUp = async (e: React.FormEvent) => {
-        e.preventDefault(); setLoading(true); setError(null);
-        try { const { error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName } } }); if (error) throw error; navigate(Screen.SignUpSuccess); } 
-        catch (err: any) { setError(err.message || "Erro ao cadastrar."); } finally { setLoading(false); }
+        e.preventDefault(); 
+        setLoading(true); 
+        setError(null);
+
+        if (password !== confirmPassword) {
+            setError("As senhas não coincidem.");
+            setLoading(false);
+            return;
+        }
+
+        try { 
+            const { error } = await supabase.auth.signUp({ 
+                email, 
+                password, 
+                options: { 
+                    data: { 
+                        full_name: fullName,
+                        phone: phone
+                    } 
+                } 
+            }); 
+            if (error) throw error; 
+            navigate(Screen.SignUpSuccess); 
+        } 
+        catch (err: any) { 
+            setError(err.message || "Erro ao cadastrar."); 
+        } finally { 
+            setLoading(false); 
+        }
     };
     return (
         <div className="w-full h-full bg-white flex flex-col justify-center p-8 animate-fade-in">
             <div className="mb-8 text-center"><h2 className="text-3xl font-bold text-slate-800">Criar Conta</h2><p className="text-gray-500 mt-2">É rápido e fácil!</p></div>
             {error && <p className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-center">{error}</p>}
-            <form onSubmit={handleSignUp} className="space-y-4"><Input placeholder="Nome completo" value={fullName} onChange={e => setFullName(e.target.value)} required /><Input placeholder="E-mail" type="email" value={email} onChange={e => setEmail(e.target.value)} required /><Input placeholder="Senha" type="password" value={password} onChange={e => setPassword(e.target.value)} required /><Button type="submit" disabled={loading}>{loading ? 'Cadastrando...' : 'Cadastrar'}</Button></form>
+            <form onSubmit={handleSignUp} className="space-y-4">
+                <Input placeholder="Nome completo" value={fullName} onChange={e => setFullName(e.target.value)} required />
+                <Input placeholder="Telefone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} required />
+                <Input placeholder="E-mail" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+                <Input placeholder="Senha" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+                <Input placeholder="Confirmar Senha" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required />
+                <Button type="submit" disabled={loading}>{loading ? 'Cadastrando...' : 'Cadastrar'}</Button>
+            </form>
             <p className="text-center text-sm text-gray-500 mt-8">Já tem conta? <a onClick={() => navigate(Screen.Login)} className="font-semibold text-slate-600 hover:underline cursor-pointer">Entrar</a></p>
         </div>
     );
