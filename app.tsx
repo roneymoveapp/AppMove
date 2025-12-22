@@ -225,34 +225,13 @@ const MainMapScreen: React.FC = () => {
     const { navigate, rideState, setRideState } = useAppContext();
     const mapRef = useRef<HTMLDivElement>(null);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [isLocationReady, setIsLocationReady] = useState(false);
     const mapInstance = useRef<any>(null);
     const userMarker = useRef<any>(null);
     
     // Tracking Drivers State
     const [availableDrivers, setAvailableDrivers] = useState<any[]>([]);
     const driverMarkers = useRef<{ [key: string]: any }>({});
-
-    const updatePosition = (pos: { lat: number; lng: number }) => {
-        if (mapInstance.current) {
-            mapInstance.current.setCenter(pos);
-            if (userMarker.current) {
-                userMarker.current.setPosition(pos);
-            } else if (window.google) {
-                userMarker.current = new window.google.maps.Marker({
-                    position: pos,
-                    map: mapInstance.current,
-                    icon: {
-                        path: window.google.maps.SymbolPath.CIRCLE,
-                        scale: 8,
-                        fillColor: '#4285F4',
-                        fillOpacity: 1,
-                        strokeWeight: 2,
-                        strokeColor: 'white'
-                    }
-                });
-            }
-        }
-    };
 
     // Fetch and Subscribe to Drivers
     const fetchDrivers = async () => {
@@ -267,45 +246,71 @@ const MainMapScreen: React.FC = () => {
         }
     };
 
-    useEffect(() => {
-        if (mapRef.current && window.google) {
-            mapInstance.current = new window.google.maps.Map(mapRef.current, {
-                center: { lat: -23.5505, lng: -46.6333 }, 
-                zoom: 15,
-                disableDefaultUI: true,
-                styles: [
-                    { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-                    { featureType: 'transit', stylers: [{ visibility: 'off' }] }
-                ]
-            });
-            
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        const pos = { lat: position.coords.latitude, lng: position.coords.longitude };
-                        updatePosition(pos);
-                        // Guarda a localização real no estado global para o pedido
-                        setRideState(prev => ({ ...prev, originLat: pos.lat, originLng: pos.lng }));
-                    },
-                    (error) => console.error('Geolocation error:', error)
-                );
+    const initMap = (pos: { lat: number; lng: number }) => {
+        if (!mapRef.current || !window.google) return;
+
+        mapInstance.current = new window.google.maps.Map(mapRef.current, {
+            center: pos, // Inicia diretamente na posição real
+            zoom: 15,
+            disableDefaultUI: true,
+            styles: [
+                { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+                { featureType: 'transit', stylers: [{ visibility: 'off' }] }
+            ]
+        });
+
+        userMarker.current = new window.google.maps.Marker({
+            position: pos,
+            map: mapInstance.current,
+            icon: {
+                path: window.google.maps.SymbolPath.CIRCLE,
+                scale: 8,
+                fillColor: '#4285F4',
+                fillOpacity: 1,
+                strokeWeight: 2,
+                strokeColor: 'white'
             }
+        });
 
-            // Iniciar busca de motoristas
-            fetchDrivers();
+        setIsLocationReady(true);
+        fetchDrivers();
+    };
 
-            // Realtime subscription for drivers table
-            const channel = supabase
-                .channel('available_drivers')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'drivers' }, () => {
-                    fetchDrivers();
-                })
-                .subscribe();
-
-            return () => {
-                supabase.removeChannel(channel);
-            };
+    useEffect(() => {
+        // Primeiro: Pega a localização ANTES de mostrar o mapa
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const pos = { lat: position.coords.latitude, lng: position.coords.longitude };
+                    setRideState(prev => ({ ...prev, originLat: pos.lat, originLng: pos.lng }));
+                    
+                    // Só inicializa o mapa se o elemento estiver disponível
+                    if (window.google) {
+                        initMap(pos);
+                    }
+                },
+                (error) => {
+                    console.error('Geolocation error:', error);
+                    // Fallback se o GPS falhar, mas avisamos o usuário
+                    alert("Por favor, ative seu GPS para usar o Move.");
+                    const fallbackPos = { lat: -23.5505, lng: -46.6333 };
+                    if (window.google) initMap(fallbackPos);
+                },
+                { enableHighAccuracy: true, timeout: 5000 }
+            );
         }
+
+        // Realtime subscription for drivers table
+        const channel = supabase
+            .channel('available_drivers')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'drivers' }, () => {
+                fetchDrivers();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     // Monitorar a corrida atual para saber quando for aceita
@@ -375,13 +380,25 @@ const MainMapScreen: React.FC = () => {
     }, [availableDrivers]);
 
     return (
-        <div className="w-full h-full relative overflow-hidden">
-            <div ref={mapRef} className="w-full h-full bg-gray-200" />
+        <div className="w-full h-full relative overflow-hidden bg-gray-100">
+            {/* O mapa só aparece quando a localização está confirmada */}
+            <div ref={mapRef} className={`w-full h-full transition-opacity duration-700 ${isLocationReady ? 'opacity-100' : 'opacity-0'}`} />
+            
+            {/* Loading Overlay discreto enquanto o GPS carrega */}
+            {!isLocationReady && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-50 z-50">
+                    <div className="w-12 h-12 border-4 border-slate-800 border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <p className="text-slate-600 font-medium animate-pulse">Confirmando sua localização...</p>
+                </div>
+            )}
+
             <SideMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
-            <div className="absolute top-5 left-5 right-5 bg-white rounded-lg shadow-lg flex items-center p-3 z-10 space-x-2">
+            
+            <div className={`absolute top-5 left-5 right-5 bg-white rounded-lg shadow-lg flex items-center p-3 z-10 space-x-2 transition-all duration-500 ${isLocationReady ? 'translate-y-0 opacity-100' : '-translate-y-4 opacity-0'}`}>
                 <button onClick={() => setIsMenuOpen(true)} className="p-2 rounded-full hover:bg-gray-100"><MenuIcon /></button>
                 <div className="flex-grow cursor-pointer p-2" onClick={() => navigate(Screen.SearchDestination)}><span className="text-lg text-gray-500">Para onde vamos?</span></div>
             </div>
+            
             {rideState.stage !== 'none' && <RideRequestSheet />}
         </div>
     );
