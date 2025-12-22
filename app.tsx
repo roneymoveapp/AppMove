@@ -222,7 +222,7 @@ const ResetPasswordScreen: React.FC = () => {
 };
 
 const MainMapScreen: React.FC = () => {
-    const { navigate, rideState } = useAppContext();
+    const { navigate, rideState, setRideState } = useAppContext();
     const mapRef = useRef<HTMLDivElement>(null);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const mapInstance = useRef<any>(null);
@@ -284,6 +284,8 @@ const MainMapScreen: React.FC = () => {
                     (position) => {
                         const pos = { lat: position.coords.latitude, lng: position.coords.longitude };
                         updatePosition(pos);
+                        // Guarda a localização real no estado global para o pedido
+                        setRideState(prev => ({ ...prev, originLat: pos.lat, originLng: pos.lng }));
                     },
                     (error) => console.error('Geolocation error:', error)
                 );
@@ -305,6 +307,39 @@ const MainMapScreen: React.FC = () => {
             };
         }
     }, []);
+
+    // Monitorar a corrida atual para saber quando for aceita
+    useEffect(() => {
+        if (!rideState.rideId) return;
+
+        const rideChannel = supabase
+            .channel(`ride_status_${rideState.rideId}`)
+            .on('postgres_changes', 
+                { event: 'UPDATE', schema: 'public', table: 'rides', filter: `id=eq.${rideState.rideId}` }, 
+                (payload) => {
+                    const updated = payload.new;
+                    if (updated.status === 'accepted') {
+                        setRideState(prev => ({ 
+                            ...prev, 
+                            stage: 'driver_en_route', 
+                            driverId: updated.driver_id 
+                        }));
+                    } else if (updated.status === 'in_progress') {
+                        setRideState(prev => ({ ...prev, stage: 'in_progress' }));
+                    } else if (updated.status === 'completed') {
+                        setRideState(prev => ({ ...prev, stage: 'rating' }));
+                    } else if (updated.status === 'cancelled') {
+                        setRideState(initialRideState);
+                        alert("Sua corrida foi cancelada pelo motorista.");
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(rideChannel);
+        };
+    }, [rideState.rideId]);
 
     // Effect to update Markers on Map whenever availableDrivers change
     useEffect(() => {
@@ -367,12 +402,38 @@ const SearchDestinationScreen: React.FC = () => {
 
         setLoading(true);
 
-        // 1. Atualiza visualmente primeiro para dar feedback imediato
-        setRideState(prev => ({ ...prev, stage: 'searching', from, to }));
+        // Garantir que temos a localização real antes de enviar
+        let currentLat = rideState.originLat;
+        let currentLng = rideState.originLng;
+
+        if (!currentLat || !currentLng) {
+            try {
+                const position: any = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject);
+                });
+                currentLat = position.coords.latitude;
+                currentLng = position.coords.longitude;
+            } catch (err) {
+                console.error("GPS Error during confirm", err);
+                alert("Ative seu GPS para pedir uma corrida.");
+                setLoading(false);
+                return;
+            }
+        }
+
+        // 1. Atualiza visualmente primeiro
+        setRideState(prev => ({ 
+            ...prev, 
+            stage: 'searching', 
+            from, 
+            to, 
+            originLat: currentLat, 
+            originLng: currentLng 
+        }));
         navigate(Screen.MainMap);
 
         try {
-            // 2. Faz o INSERT real no Supabase
+            // 2. Faz o INSERT real no Supabase incluindo COORDENADAS REAIS
             const { data, error } = await supabase
                 .from('rides')
                 .insert([
@@ -380,7 +441,9 @@ const SearchDestinationScreen: React.FC = () => {
                         user_id: user.id,
                         from_location: from,
                         to_location: to,
-                        estimated_price: 25.90, // Valor simulado
+                        origin_lat: currentLat,
+                        origin_lng: currentLng,
+                        estimated_price: 25.90,
                         payment_method_type: rideState.paymentMethodType,
                         status: 'searching'
                     }
@@ -393,13 +456,12 @@ const SearchDestinationScreen: React.FC = () => {
             // 3. Sucesso: Guarda o ID da corrida criada
             if (data) {
                 setRideState(prev => ({ ...prev, rideId: data.id }));
-                console.log("Corrida iniciada no banco. ID:", data.id);
+                console.log("Corrida iniciada com GPS real. ID:", data.id);
             }
 
         } catch (err: any) {
             console.error("Erro ao solicitar corrida:", err);
-            alert("Não foi possível processar seu pedido. Verifique sua conexão.");
-            // Reverte o estado em caso de erro crítico
+            alert("Não foi possível processar seu pedido.");
             setRideState(initialRideState);
         } finally {
             setLoading(false);
@@ -417,21 +479,45 @@ const SearchDestinationScreen: React.FC = () => {
 
 const RideRequestSheet = () => {
     const { rideState, setRideState } = useAppContext();
+    const isSearching = rideState.stage === 'searching';
+    const isAccepted = rideState.stage === 'driver_en_route';
+
     return (
         <div className="absolute bottom-0 left-0 right-0 bg-white p-6 rounded-t-2xl shadow-2xl z-20 space-y-4 animate-slide-in-up">
             <div className="flex justify-between items-start">
                 <div>
-                    <h2 className="text-xl font-bold">Procurando Motorista</h2>
+                    <h2 className="text-xl font-bold">
+                        {isAccepted ? 'Motorista a caminho' : 'Procurando Motorista'}
+                    </h2>
                     <p className="text-sm text-gray-500">Pagamento: <span className="font-bold text-slate-700">{rideState.paymentMethodLabel}</span></p>
                 </div>
                 <div className="text-right">
                     <p className="text-lg font-bold text-slate-800">R$ 25,90</p>
                 </div>
             </div>
-            <div className="flex items-center space-x-3 bg-gray-50 p-4 rounded-lg">
-                <div className="w-10 h-10 bg-slate-200 rounded-full animate-pulse" />
-                <div className="flex-grow space-y-2"><div className="h-4 bg-slate-200 rounded w-1/2 animate-pulse" /><div className="h-3 bg-slate-200 rounded w-3/4 animate-pulse" /></div>
+            
+            <div className={`flex items-center space-x-3 p-4 rounded-lg transition-colors ${isAccepted ? 'bg-green-50' : 'bg-gray-50'}`}>
+                {isAccepted ? (
+                    <div className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center text-white font-bold text-xl">M</div>
+                ) : (
+                    <div className="w-10 h-10 bg-slate-200 rounded-full animate-pulse" />
+                )}
+                
+                <div className="flex-grow space-y-2">
+                    {isAccepted ? (
+                        <>
+                            <div className="font-bold text-slate-800">Seu motorista chegará em instantes</div>
+                            <div className="text-xs text-gray-500">Honda Civic • ABC-1234</div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="h-4 bg-slate-200 rounded w-1/2 animate-pulse" />
+                            <div className="h-3 bg-slate-200 rounded w-3/4 animate-pulse" />
+                        </>
+                    )}
+                </div>
             </div>
+            
             <Button variant="danger" onClick={() => setRideState(initialRideState)}>Cancelar</Button>
         </div>
     );
