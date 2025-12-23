@@ -159,7 +159,7 @@ const SignUpScreen: React.FC = () => {
                 <Input placeholder="Telefone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} required />
                 <Input placeholder="E-mail" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
                 <Input placeholder="Senha" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
-                <Input placeholder="Confirmar Senha" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required />
+                <Input placeholder="Confirmar Senha" type="password" value={confirmPassword} onChange={e => setPassword(e.target.value)} required />
                 <Button type="submit" disabled={loading}>{loading ? 'Cadastrando...' : 'Cadastrar'}</Button>
             </form>
             <p className="text-center text-sm text-gray-500 mt-8">Já tem conta? <a onClick={() => navigate(Screen.Login)} className="font-semibold text-slate-600 hover:underline cursor-pointer">Entrar</a></p>
@@ -323,17 +323,17 @@ const MainMapScreen: React.FC = () => {
                 { event: 'UPDATE', schema: 'public', table: 'rides', filter: `id=eq.${rideState.rideId}` }, 
                 (payload) => {
                     const updated = payload.new;
-                    if (updated.status === 'accepted') {
+                    if (updated.status === 'ACCEPTED') {
                         setRideState(prev => ({ 
                             ...prev, 
                             stage: 'driver_en_route', 
                             driverId: updated.driver_id 
                         }));
-                    } else if (updated.status === 'in_progress') {
+                    } else if (updated.status === 'IN_PROGRESS') {
                         setRideState(prev => ({ ...prev, stage: 'in_progress' }));
-                    } else if (updated.status === 'completed') {
+                    } else if (updated.status === 'COMPLETED') {
                         setRideState(prev => ({ ...prev, stage: 'rating' }));
-                    } else if (updated.status === 'cancelled') {
+                    } else if (updated.status === 'CANCELLED') {
                         setRideState(initialRideState);
                         alert("Sua corrida foi cancelada pelo motorista.");
                     }
@@ -450,7 +450,7 @@ const SearchDestinationScreen: React.FC = () => {
         navigate(Screen.MainMap);
 
         try {
-            // 2. Faz o INSERT real no Supabase incluindo COORDENADAS REAIS
+            // 2. Faz o INSERT real no Supabase incluindo COORDENADAS REAIS e status 'REQUESTED' para o motorista ver
             const { data, error } = await supabase
                 .from('rides')
                 .insert([
@@ -462,7 +462,7 @@ const SearchDestinationScreen: React.FC = () => {
                         origin_lng: currentLng,
                         estimated_price: 25.90,
                         payment_method_type: rideState.paymentMethodType,
-                        status: 'searching'
+                        status: 'REQUESTED'
                     }
                 ])
                 .select()
