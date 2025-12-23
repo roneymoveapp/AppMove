@@ -29,6 +29,8 @@ type RideState = {
     to: string | null;
     originLat: number | null;
     originLng: number | null;
+    destinationLat: number | null;
+    destinationLng: number | null;
     stops: string[];
     vehicle: 'Simples' | 'Conforto' | null;
     estimatedPrice: string | null;
@@ -45,6 +47,8 @@ const initialRideState: RideState = {
     to: null,
     originLat: null,
     originLng: null,
+    destinationLat: null,
+    destinationLng: null,
     stops: [],
     vehicle: null,
     estimatedPrice: null,
@@ -159,7 +163,7 @@ const SignUpScreen: React.FC = () => {
                 <Input placeholder="Telefone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} required />
                 <Input placeholder="E-mail" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
                 <Input placeholder="Senha" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
-                <Input placeholder="Confirmar Senha" type="password" value={confirmPassword} onChange={e => setPassword(e.target.value)} required />
+                <Input placeholder="Confirmar Senha" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required />
                 <Button type="submit" disabled={loading}>{loading ? 'Cadastrando...' : 'Cadastrar'}</Button>
             </form>
             <p className="text-center text-sm text-gray-500 mt-8">Já tem conta? <a onClick={() => navigate(Screen.Login)} className="font-semibold text-slate-600 hover:underline cursor-pointer">Entrar</a></p>
@@ -399,6 +403,44 @@ const SearchDestinationScreen: React.FC = () => {
     const [from, setFrom] = useState('Minha Localização');
     const [to, setTo] = useState('');
     const [loading, setLoading] = useState(false);
+    
+    const inputToRef = useRef<HTMLInputElement>(null);
+    const inputFromRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (!window.google || !inputToRef.current) return;
+
+        // Opções de Autocomplete sem restrição de país para liberdade total
+        const options = {
+            fields: ['geometry', 'formatted_address', 'name'],
+        };
+
+        const autocompleteTo = new window.google.maps.places.Autocomplete(inputToRef.current, options);
+        autocompleteTo.addListener('place_changed', () => {
+            const place = autocompleteTo.getPlace();
+            if (place.geometry) {
+                setTo(place.formatted_address || place.name);
+                setRideState(prev => ({
+                    ...prev,
+                    destinationLat: place.geometry.location.lat(),
+                    destinationLng: place.geometry.location.lng()
+                }));
+            }
+        });
+
+        const autocompleteFrom = new window.google.maps.places.Autocomplete(inputFromRef.current, options);
+        autocompleteFrom.addListener('place_changed', () => {
+            const place = autocompleteFrom.getPlace();
+            if (place.geometry) {
+                setFrom(place.formatted_address || place.name);
+                setRideState(prev => ({
+                    ...prev,
+                    originLat: place.geometry.location.lat(),
+                    originLng: place.geometry.location.lng()
+                }));
+            }
+        });
+    }, []);
 
     const handleConfirm = async () => {
         if (!to.trim()) return;
@@ -411,7 +453,10 @@ const SearchDestinationScreen: React.FC = () => {
 
         let currentLat = rideState.originLat;
         let currentLng = rideState.originLng;
+        let destLat = rideState.destinationLat;
+        let destLng = rideState.destinationLng;
 
+        // Fallback GPS for origin if not set by autocomplete
         if (!currentLat || !currentLng) {
             try {
                 const position: any = await new Promise((resolve, reject) => {
@@ -438,7 +483,6 @@ const SearchDestinationScreen: React.FC = () => {
         navigate(Screen.MainMap);
 
         try {
-            // CORREÇÃO: Nomes das colunas origin_latitude e origin_longitude para bater com o banco
             const { data, error } = await supabase
                 .from('rides')
                 .insert([
@@ -448,6 +492,8 @@ const SearchDestinationScreen: React.FC = () => {
                         to_location: to,
                         origin_latitude: currentLat,
                         origin_longitude: currentLng,
+                        destination_latitude: destLat,
+                        destination_longitude: destLng,
                         estimated_price: 25.90,
                         payment_method: rideState.paymentMethodType,
                         status: 'REQUESTED'
@@ -475,7 +521,10 @@ const SearchDestinationScreen: React.FC = () => {
     return (
         <div className="w-full h-full bg-white flex flex-col">
             <header className="p-4 flex items-center border-b"><button onClick={() => navigate(Screen.MainMap)} className="p-2 mr-2"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg></button><h2 className="text-xl font-semibold">Definir Rota</h2></header>
-            <main className="p-4 space-y-4"><Input placeholder="Local de partida" value={from} onChange={e => setFrom(e.target.value)} /><Input placeholder="Para onde?" value={to} onChange={e => setTo(e.target.value)} autoFocus /></main>
+            <main className="p-4 space-y-4">
+                <Input ref={inputFromRef} placeholder="Local de partida" value={from} onChange={e => setFrom(e.target.value)} />
+                <Input ref={inputToRef} placeholder="Para onde?" value={to} onChange={e => setTo(e.target.value)} autoFocus />
+            </main>
             <footer className="p-4"><Button onClick={handleConfirm} disabled={!to.trim() || loading}>{loading ? 'Solicitando...' : 'Confirmar Rota'}</Button></footer>
         </div>
     );
