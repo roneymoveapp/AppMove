@@ -318,7 +318,6 @@ const MainMapScreen: React.FC = () => {
                 { event: 'UPDATE', schema: 'public', table: 'rides', filter: `id=eq.${rideState.rideId}` }, 
                 (payload) => {
                     const updated = payload.new;
-                    // Mantendo MAIÚSCULAS para sincronia
                     if (updated.status === 'ACCEPTED') {
                         setRideState(prev => ({ 
                             ...prev, 
@@ -439,7 +438,7 @@ const SearchDestinationScreen: React.FC = () => {
         navigate(Screen.MainMap);
 
         try {
-            // CORREÇÃO CRÍTICA: Nome da coluna alterado de 'payment_method_type' para 'payment_method'
+            // CORREÇÃO: Nomes das colunas origin_latitude e origin_longitude para bater com o banco
             const { data, error } = await supabase
                 .from('rides')
                 .insert([
@@ -447,8 +446,8 @@ const SearchDestinationScreen: React.FC = () => {
                         user_id: user.id,
                         from_location: from,
                         to_location: to,
-                        origin_lat: currentLat,
-                        origin_lng: currentLng,
+                        origin_latitude: currentLat,
+                        origin_longitude: currentLng,
                         estimated_price: 25.90,
                         payment_method: rideState.paymentMethodType,
                         status: 'REQUESTED'
@@ -466,7 +465,6 @@ const SearchDestinationScreen: React.FC = () => {
 
         } catch (err: any) {
             console.error("Erro ao solicitar corrida:", err);
-            // Esse alert é disparado pelo erro de coluna no banco
             alert("Não foi possível processar seu pedido.");
             setRideState(initialRideState);
         } finally {
